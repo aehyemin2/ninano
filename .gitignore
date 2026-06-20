@@ -1,2 +1,4 @@
 .venv/
 outputs/
+apps/web/node_modules/
+apps/web/dist/
