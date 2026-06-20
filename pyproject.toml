@@ -1,0 +1,17 @@
+[project]
+name = "ninano"
+version = "0.1.0"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "cbottle",
+    "earth2grid",
+    "earth2studio>=0.15.0",
+]
+
+[tool.uv]
+environments = ["sys_platform == 'linux'"]
+
+[tool.uv.sources]
+# Earth2Studio 0.15.0 pins these sources for its cBottle extra.
+cbottle = { git = "https://github.com/NickGeneva/cBottle.git", rev = "e48c7eb518d49d4a92b2a1397d683e765c02c354" }
+earth2grid = { git = "https://github.com/NVlabs/earth2grid.git", rev = "11dcf1b0787a7eb6a8497a3a5a5e1fdcc31232d3" }
