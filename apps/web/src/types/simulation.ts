@@ -78,6 +78,7 @@ export interface SimulationDataset {
   grid: GridDefinition;
   baselineFrame: SimulationFrame;
   packedBaseUrl?: string;
+  layerApiBaseUrl?: string;
 }
 
 export interface VariableDefinition {

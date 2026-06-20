@@ -70,6 +70,16 @@ ninano/
 
 ## 웹 실행
 
+터미널 하나에서 FastAPI를 실행합니다.
+
+```bash
+cd backend
+uv sync
+uv run uvicorn server.app:app --reload --port 8000
+```
+
+다른 터미널에서 Vite를 실행합니다.
+
 Windows의 파일 탐색기에서 `index.html`을 직접 열면 모듈과 데이터 요청이 동작하지 않습니다. Ubuntu/WSL에서 Vite 개발 서버를 실행해야 합니다.
 
 ```bash
@@ -97,7 +107,14 @@ npm run build
 
 ## 현재 데이터 로딩 방식
 
-로컬 개발에서는 별도 백엔드가 필요하지 않습니다. `vite.config.ts`의 개발 서버 middleware가 저장소의 `public_data`를 다음 URL로 제공합니다.
+프런트엔드는 먼저 FastAPI의 변수별 레이어 API를 호출합니다. 개발 중 Vite는 `/api` 요청을 `http://127.0.0.1:8000`으로 프록시합니다.
+
+```text
+/api/v1/enso/metadata
+/api/v1/enso/layers/{layer}?sst_anomaly=1.2&wind_delta=3
+```
+
+FastAPI가 실행되지 않을 때는 `vite.config.ts`의 개발 서버 middleware가 저장소의 `public_data`를 다음 URL로 제공합니다.
 
 ```text
 /public_data/f32_packed/manifest.json
@@ -112,10 +129,10 @@ npm run build
 데이터 로딩 우선순위는 다음과 같습니다.
 
 ```text
-변수별 packed F32
+FastAPI 변수별 packed F32
         │ 실패
         ▼
-FastAPI 통합 frame
+Vite 정적 packed F32
         │ 실패
         ▼
 브라우저 preview 데이터
