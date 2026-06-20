@@ -1,0 +1,14 @@
+[project]
+name = "ninano"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "cartopy>=0.25.0",
+    "earth2studio[dlwp]>=0.15.0",
+    "matplotlib>=3.11.0",
+    "netcdf4>=1.7.2",
+    "requests>=2.34.2",
+    "xarray>=2026.4.0",
+]
