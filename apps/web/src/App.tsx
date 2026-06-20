@@ -1,111 +1,94 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ControlPanel } from "./components/ControlPanel";
 import { ENSOStatusPanel } from "./components/ENSOStatusPanel";
 import { Icon } from "./components/Icon";
 import { Nino34Chart } from "./components/Nino34Chart";
 import { PacificMapCanvas } from "./components/PacificMapCanvas";
-import { interpolateSimulation } from "./data/interpolateSimulation";
-import { loadEndpointSimulations } from "./data/loadEndpointSimulations";
+import { loadSimulationDataset, loadSimulationFrame } from "./data/ensoApi";
+import { createVariableCatalog } from "./data/variableCatalog";
 import { useViewerStore } from "./store/useViewerStore";
-import type { RawVariableKey, SimulationBundle } from "./types/simulation";
-
-const requiredFields: Array<{ key: RawVariableKey; label: string; purpose: string }> = [
-  { key: "t2m", label: "2m air temperature", purpose: "열 분포·Niño 3.4 보조 지표" },
-  { key: "u10m", label: "10m zonal wind", purpose: "무역풍·바람 입자 X 성분" },
-  { key: "v10m", label: "10m meridional wind", purpose: "바람 입자 Y 성분" },
-  { key: "msl", label: "mean sea-level pressure", purpose: "Walker 순환 압력장" },
-  { key: "tcwv", label: "total column water vapour", purpose: "대기 수분 분포" },
-];
+import type { SimulationDataset, SimulationFrame } from "./types/simulation";
 
 export default function App() {
-  const [bundle, setBundle] = useState<SimulationBundle | null>(null);
-  const { scenarioValue, selectedVariable, showWind, timeIndex } = useViewerStore();
+  const [dataset, setDataset] = useState<SimulationDataset | null>(null);
+  const [frame, setFrame] = useState<SimulationFrame | null>(null);
+  const [isApplying, setIsApplying] = useState(false);
+  const [applyError, setApplyError] = useState<string | null>(null);
+  const applyController = useRef<AbortController | null>(null);
+  const { appliedInputs, commitAppliedInputs, draftInputs, selectedVariable, showWind } = useViewerStore();
 
   useEffect(() => {
-    let mounted = true;
-    loadEndpointSimulations().then((result) => {
-      if (mounted) setBundle(result);
+    const controller = new AbortController();
+    loadSimulationDataset(selectedVariable, controller.signal).then((result) => {
+      setDataset(result);
+      setFrame(result.baselineFrame);
+    }).catch((error: unknown) => {
+      if (!(error instanceof DOMException && error.name === "AbortError")) setApplyError("초기 기후 데이터를 불러오지 못했습니다.");
     });
-    return () => { mounted = false; };
+    return () => controller.abort();
   }, []);
 
-  const simulation = useMemo(
-    () => (bundle ? interpolateSimulation(bundle, scenarioValue) : null),
-    [bundle, scenarioValue],
-  );
+  useEffect(() => {
+    if (!dataset) return undefined;
+    applyController.current?.abort();
+    const controller = new AbortController();
+    applyController.current = controller;
+    setIsApplying(true);
+    setApplyError(null);
+    loadSimulationFrame(dataset, draftInputs, selectedVariable, controller.signal)
+      .then((nextFrame) => {
+        if (controller.signal.aborted) return;
+        setFrame(nextFrame);
+        commitAppliedInputs(draftInputs);
+      })
+      .catch((error: unknown) => {
+        if (!(error instanceof DOMException && error.name === "AbortError")) {
+          setApplyError(error instanceof Error ? error.message : "선택한 기후장을 불러오지 못했습니다.");
+        }
+      })
+      .finally(() => {
+        if (applyController.current === controller) {
+          applyController.current = null;
+          setIsApplying(false);
+        }
+      });
+    return () => controller.abort();
+  }, [dataset, draftInputs, selectedVariable]);
 
-  if (!bundle || !simulation) {
+  const variables = useMemo(() => dataset ? createVariableCatalog(dataset.metadata) : null, [dataset]);
+
+  if (!dataset || !frame || !variables) {
     return (
-      <main className="loading-screen">
-        <div className="brand-mark"><span>N</span></div>
-        <p>Pacific climate workspace 준비 중</p>
-        <span className="loading-line" />
-      </main>
+      <main className="loading-screen"><div className="brand-mark"><span>N</span></div><p>Pacific climate workspace 준비 중</p><span className="loading-line" /></main>
     );
   }
 
-  const safeTimeIndex = Math.min(timeIndex, simulation.frames.length - 1);
-  const frame = simulation.frames[safeTimeIndex];
-  const neutralFrame = bundle.endpoints.neutral.frames[safeTimeIndex] ?? frame;
+  const sortedVariables = dataset.metadata.variables.slice().sort((a, b) => a.index - b.index);
 
   return (
     <div className="app-shell">
       <header className="topbar">
-        <div className="brand">
-          <div className="brand-mark"><span>N</span></div>
-          <div><strong>NINANO</strong><small>Pacific Climate Lab</small></div>
-        </div>
-        <div className="topbar-center">
-          <span className="workspace-pill"><Icon name="activity" size={15} /> ENSO workspace</span>
-          <span className="separator" />
-          <time>{new Intl.DateTimeFormat("en-CA", { dateStyle: "medium" }).format(new Date(frame.timestamp))}</time>
-        </div>
-        <div className={`source-badge ${bundle.source}`}>
-          <span />{bundle.source === "api" ? "DATA CONNECTED" : "PREVIEW DATA"}
-        </div>
+        <div className="brand"><div className="brand-mark"><span>N</span></div><div><strong>NINANO</strong><small>Pacific Climate Lab</small></div></div>
+        <div className="topbar-center"><span className="workspace-pill"><Icon name="activity" size={15} /> ENSO workspace</span><span className="separator" /><time>{new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeZone: "UTC" }).format(new Date(frame.timestamp))}</time></div>
+        <div className={`source-badge ${dataset.source}`}><span />{dataset.source === "preview" ? "PREVIEW DATA" : "DATA CONNECTED"}</div>
       </header>
 
       <main className="dashboard">
-        <ControlPanel frameCount={simulation.frames.length} timestamp={frame.timestamp} />
+        <ControlPanel applyError={applyError} isApplying={isApplying} metadata={dataset.metadata} variables={variables} />
         <div className="main-column">
-          <PacificMapCanvas
-            frame={frame}
-            grid={simulation.grid}
-            showWind={showWind}
-            variable={selectedVariable}
-          />
-          <section className="provenance-panel panel">
-            <div className="provenance-copy">
-              <span className="eyebrow">Source readiness</span>
-              <h2>NetCDF에서 확인한 필드</h2>
-              <p>2013-12-15 · 721 × 1440 · global 0.25°</p>
-            </div>
-            <div className="field-chips">
-              {requiredFields.map((field) => (
-                <span className="field-chip" key={field.key} title={field.purpose}>
-                  <strong>{field.key}</strong><small>{field.label}</small>
-                </span>
-              ))}
-            </div>
-          </section>
+          <PacificMapCanvas frame={frame} grid={dataset.grid} showWind={showWind} variable={selectedVariable} variables={variables} />
         </div>
         <div className="insight-column">
-          <ENSOStatusPanel frame={frame} grid={simulation.grid} scenarioValue={scenarioValue} />
-          <Nino34Chart current={frame} grid={simulation.grid} neutral={neutralFrame} />
-          <section className="handoff-panel panel">
-            <div className="handoff-icon"><Icon name="droplet" /></div>
-            <div>
-              <span className="eyebrow">Next data handoff</span>
-              <h3>SST + climatology</h3>
-              <p>정식 Niño 3.4 anomaly와 ENSO 분류에 필요한 다음 필드입니다.</p>
+          <ENSOStatusPanel frame={frame} grid={dataset.grid} inputs={appliedInputs} />
+          <Nino34Chart current={frame} grid={dataset.grid} neutral={dataset.baselineFrame} />
+          <section className="readiness-panel panel">
+            <div className="panel-heading compact"><div><span className="eyebrow">Source readiness</span><h2>확인된 필드</h2></div></div>
+            <div className="field-chips">
+              {sortedVariables.map((variable) => <span className="field-chip" key={variable.key}><strong>{variable.key}</strong><small>{variable.label}</small></span>)}
             </div>
           </section>
         </div>
       </main>
-      <footer className="app-footer">
-        <span>{bundle.sourceLabel}</span>
-        <span>Web UI · Earth2Studio field contract v1</span>
-      </footer>
     </div>
   );
 }

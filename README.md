@@ -1,162 +1,271 @@
 # ENSO Earth Simulator
 
-Earth2Studio/cBottle의 기후 데이터를 바탕으로 태평양의 온도, 바람, 해면 기압,
-대기 수증기를 탐색하는 React 웹 프로젝트입니다.
+Earth2Studio/cBottle로 생성한 ENSO 기후 실험 결과를 평면 지도와 3D 지구에서 탐색하는 웹 프로젝트입니다.
 
-현재 `apps/web`은 백엔드 데이터가 없어도 화면을 확인할 수 있도록 preview 데이터를
-사용합니다. 추후 다른 부서에서 endpoint JSON을 제공하면 같은 화면이 실제 데이터로
-자동 전환되도록 구성되어 있습니다.
+현재 프런트엔드는 React 19, TypeScript, Vite와 Canvas로 구성되어 있습니다. SST anomaly와 무역풍 변화 값을 조절하면 해당 조건의 Float32 데이터를 즉시 읽으며, 별도의 적용 버튼은 사용하지 않습니다.
 
-## 현재 폴더 구조
+## 주요 기능
+
+- SST anomaly: `-2.0 ~ +2.4 °C`, `0.2 °C` 간격
+- 무역풍 변화: `-5 ~ +5 m/s`, `1 m/s` 간격
+- 표시 레이어: `sst`, `t2m`, `tpf`, `msl`, `tcwv`
+- `u10m`, `v10m` 벡터 기반 바람 입자 애니메이션
+- 드래그와 휠 확대를 지원하는 평면 지도
+- 드래그 회전과 휠 확대를 지원하는 3D 지구
+- Natural Earth 기반 육지 경계선
+- Niño 3.4 SST, 적도 동서 바람 및 SST 편차 진단
+- 0.25° 변수별 packed Float32 파일 지연 로딩
+
+## 프로젝트 구조
 
 ```text
 ninano/
 ├─ apps/
 │  └─ web/
-│     ├─ index.html                  # 브라우저가 처음 여는 HTML
-│     ├─ package.json                # 실행 명령과 npm 패키지 목록
-│     ├─ package-lock.json           # 설치된 패키지 버전 고정 파일
-│     ├─ vite.config.ts              # Vite 개발 서버 설정
-│     ├─ tsconfig.json               # TypeScript 프로젝트 진입 설정
-│     ├─ tsconfig.app.json           # 실제 src 검사 규칙
+│     ├─ index.html
+│     ├─ package.json
+│     ├─ vite.config.ts             # React 설정 및 개발용 public_data 제공
+│     ├─ tsconfig.json
 │     └─ src/
-│        ├─ main.tsx                 # React 앱 시작점
-│        ├─ App.tsx                  # 전체 대시보드 조립 및 데이터 로드
-│        ├─ styles.css               # 전체 화면·반응형 디자인
-│        ├─ vite-env.d.ts            # Vite 환경 변수 타입 선언
-│        │
+│        ├─ main.tsx                # React 진입점
+│        ├─ App.tsx                 # 데이터 로딩과 전체 화면 조립
+│        ├─ styles.css              # 화면 및 반응형 스타일
 │        ├─ components/
-│        │  ├─ PacificMapCanvas.tsx  # 기후장 Canvas와 마우스 좌표 조회
-│        │  ├─ ControlPanel.tsx      # 시나리오·변수·시간·바람 제어
-│        │  ├─ ENSOStatusPanel.tsx   # ENSO 상태 및 영역 평균 지표
-│        │  ├─ Nino34Chart.tsx       # 적도 2m 기온 프로파일 차트
-│        │  └─ Icon.tsx              # 공통 SVG 아이콘
-│        │
+│        │  ├─ ControlPanel.tsx     # 실험 슬라이더와 레이어 선택
+│        │  ├─ PacificMapCanvas.tsx # 평면/3D Canvas와 지도 조작
+│        │  ├─ ENSOStatusPanel.tsx  # ENSO 영역 평균 지표
+│        │  ├─ Nino34Chart.tsx      # 적도 SST 편차 그래프
+│        │  └─ Icon.tsx             # 공통 SVG 아이콘
 │        ├─ data/
-│        │  ├─ loadEndpointSimulations.ts # JSON 요청 및 preview 전환
-│        │  ├─ interpolateSimulation.ts   # endpoint 사이 값 보간
-│        │  ├─ demoSimulation.ts          # 백엔드 연결 전용 preview 데이터
-│        │  ├─ variableCatalog.ts         # 변수 단위·범위·색상표
-│        │  └─ loadGeoJson.ts             # 추후 실제 해안선 GeoJSON 로더
-│        │
+│        │  ├─ ensoApi.ts           # packed F32/API/preview 로딩과 캐시
+│        │  ├─ readF32Frame.ts      # scalar 및 interleaved wind 파싱
+│        │  ├─ demoSimulation.ts    # 데이터 연결 실패 시 preview
+│        │  ├─ variableCatalog.ts   # 단위, 범위, 색상표 구성
+│        │  └─ loadGeoJson.ts       # 육지 경계 좌표 로딩
 │        ├─ render/
-│        │  ├─ drawMap.ts             # 격자와 간이 해안선 오버레이
-│        │  ├─ drawSSTLayer.ts        # 선택된 기후 변수 색상 레이어
-│        │  └─ drawWindParticles.ts   # u10m/v10m 기반 바람 입자
-│        │
+│        │  ├─ drawSSTLayer.ts      # 선택 기후장 렌더링과 좌표 변환
+│        │  ├─ drawWindParticles.ts # u/v 벡터 입자 애니메이션
+│        │  ├─ drawMap.ts           # 평면 경위도 격자
+│        │  ├─ drawGlobe.ts         # 3D 지구 투영
+│        │  └─ drawLandBoundaries.ts
 │        ├─ store/
-│        │  └─ useViewerStore.ts      # 화면 선택 상태를 공유하는 Context
-│        │
+│        │  └─ useViewerStore.ts    # 실험값과 화면 상태
 │        └─ types/
-│           └─ simulation.ts          # 프런트·백엔드 데이터 계약 타입
-│
-├─ backend/                           # 다른 부서 담당 영역
-└─ public_data/                       # 다른 부서 담당 결과 데이터 영역
+│           └─ simulation.ts        # 데이터 계약 타입
+├─ backend/                         # 백엔드 담당 영역
+├─ public_data/
+│  └─ f32_packed/                  # 변수별 0.25° Float32 데이터
+│     ├─ manifest.json
+│     ├─ sst/
+│     ├─ t2m/
+│     ├─ tpf/
+│     ├─ msl/
+│     ├─ tcwv/
+│     └─ wind/
+├─ pyproject.toml                  # Python/Earth2Studio 의존성
+└─ uv.lock
 ```
 
-## 파일별 설명
-
-### 앱 시작과 설정
-
-| 파일 | 역할 | 직접 수정 여부 |
-| --- | --- | --- |
-| `index.html` | `#root` 엘리먼트를 만들고 `main.tsx`를 불러옵니다. | 제목이나 meta 정보 변경 시 |
-| `src/main.tsx` | React를 실행하고 전역 store와 CSS를 연결합니다. | 전역 Provider 추가 시 |
-| `src/App.tsx` | 데이터를 읽은 뒤 왼쪽 제어판, 중앙 지도, 오른쪽 분석 패널을 조립합니다. | 화면 구조 변경 시 |
-| `src/styles.css` | 색상, 간격, 레이아웃과 모바일 반응형 규칙을 관리합니다. | 디자인 변경 시 |
-| `package.json` | `npm run dev`, `build`, `typecheck` 명령과 React/Vite 버전을 관리합니다. | 패키지 추가 시 |
-| `package-lock.json` | 모든 하위 패키지 버전을 고정해 같은 설치 결과를 만듭니다. | 직접 수정하지 않음 |
-| `vite.config.ts` | 개발 서버 포트와 React 플러그인을 설정합니다. | 서버 설정 변경 시 |
-| `tsconfig*.json` | TypeScript의 strict 검사와 브라우저 대상 설정을 관리합니다. | 타입 검사 정책 변경 시 |
-| `vite-env.d.ts` | `import.meta.env` 등 Vite 전용 타입을 TypeScript에 알려줍니다. | 보통 수정하지 않음 |
-
-### 화면 컴포넌트
-
-| 파일 | 역할 |
-| --- | --- |
-| `ControlPanel.tsx` | La Niña–Neutral–El Niño 슬라이더, 표시 변수, 시간, 바람 입자 표시 여부를 바꿉니다. |
-| `PacificMapCanvas.tsx` | 선택된 프레임을 Canvas에 그리고 마우스 위치의 좌표·값·풍속을 표시합니다. |
-| `ENSOStatusPanel.tsx` | Niño 3.4 영역의 `t2m` 평균과 적도 `u10m` 평균을 보여줍니다. |
-| `Nino34Chart.tsx` | 단일 시점에서도 비교할 수 있도록 적도 ±5°의 2m 공기 온도 프로파일을 표시합니다. 실제 SST anomaly 차트는 아닙니다. |
-| `Icon.tsx` | 외부 아이콘 라이브러리 없이 화면에서 사용하는 SVG 아이콘을 제공합니다. |
-
-### 데이터 처리
-
-| 파일 | 역할 |
-| --- | --- |
-| `types/simulation.ts` | 위도·경도 격자, 변수 배열, 시각, endpoint 구조를 TypeScript 타입으로 정의합니다. 백엔드 JSON도 이 구조를 따라야 합니다. |
-| `variableCatalog.ts` | NetCDF에서 확인한 변수의 이름, 단위, 표시 범위, 범례 눈금과 색상표를 정의합니다. |
-| `loadEndpointSimulations.ts` | `/data/simulations/simulation_index.json`을 요청합니다. 요청이 실패하면 `demoSimulation.ts`를 사용합니다. |
-| `demoSimulation.ts` | UI 개발용 가상 기후장을 생성합니다. 실제 cBottle 예측 결과가 아니며 화면 preview 용도입니다. |
-| `interpolateSimulation.ts` | 슬라이더 값에 따라 La Niña–Neutral 또는 Neutral–El Niño endpoint의 각 격자값을 선형 보간합니다. |
-| `loadGeoJson.ts` | 향후 `world.geojson`이 제공될 때 실제 해안선을 읽기 위한 로더입니다. 현재 지도는 간이 해안선을 사용합니다. |
-
-### Canvas 렌더링
-
-| 파일 | 역할 |
-| --- | --- |
-| `drawSSTLayer.ts` | 파일명은 초기 설계에서 남았지만 현재는 SST만이 아니라 `t2m`, `msl`, `tcwv`, `wind`를 모두 그립니다. `wind`는 `u10m`, `v10m`으로 계산합니다. |
-| `drawMap.ts` | 기후장 위에 경위도 격자, 적도선, 간이 해안선을 그립니다. |
-| `drawWindParticles.ts` | `u10m`, `v10m` 방향으로 움직이는 입자를 애니메이션합니다. |
-
-## 화면까지 데이터가 전달되는 과정
-
-```text
-simulation_index.json
-        │
-        ▼
-loadEndpointSimulations.ts ── 실패 시 ──▶ demoSimulation.ts
-        │
-        ▼
-interpolateSimulation.ts ◀── ControlPanel 시나리오 슬라이더
-        │
-        ▼
-App.tsx
-   ├─ PacificMapCanvas.tsx ─▶ drawSSTLayer / drawMap / drawWindParticles
-   ├─ ENSOStatusPanel.tsx
-   └─ Nino34Chart.tsx
-```
-
-## NetCDF에서 확인한 변수
-
-`neutral_2013-12-15.nc`에는 다음 다섯 개의 기후 변수가 있습니다.
-
-| 변수 | 의미 | 화면 사용처 |
-| --- | --- | --- |
-| `t2m` | 2m 공기 온도, K | 온도 레이어, Niño 3.4 영역 보조 지표 |
-| `u10m` | 10m 동서 바람, m/s | 풍속 계산, 바람 입자의 X 방향 |
-| `v10m` | 10m 남북 바람, m/s | 풍속 계산, 바람 입자의 Y 방향 |
-| `msl` | 평균 해면 기압, Pa | 해면 기압 레이어 |
-| `tcwv` | 대기 전체 수증기량, kg/m² | 수증기 레이어 |
-
-현재 파일에는 `sst`와 평년값(climatology)이 없습니다. 따라서 정식 Niño 3.4
-SST anomaly는 계산하지 않으며, 화면에도 데이터가 추가로 필요하다고 표시합니다.
-
-## 자동 생성되는 파일
-
-- `node_modules/`: `npm install`로 받은 패키지입니다. 수정하거나 Git에 올리지 않습니다.
-- `dist/`: `npm run build` 결과입니다. 다시 빌드할 수 있으므로 직접 수정하지 않습니다.
-- `tsconfig.app.tsbuildinfo`: TypeScript가 빠른 재검사를 위해 만드는 캐시입니다.
-- `package-lock.json`: 자동 생성되지만 재현 가능한 설치를 위해 Git에는 포함합니다.
+`backend`와 `public_data`는 다른 담당 영역이며, 프런트엔드는 해당 결과를 읽기만 합니다.
 
 ## 웹 실행
 
-Ubuntu에는 Node 22가 설치되어 있습니다. 먼저 버전을 확인한 뒤 실행합니다.
+Windows의 파일 탐색기에서 `index.html`을 직접 열면 모듈과 데이터 요청이 동작하지 않습니다. Ubuntu/WSL에서 Vite 개발 서버를 실행해야 합니다.
 
 ```bash
-node --version
-npm --version
+wsl -d Ubuntu-24.04
 cd /mnt/d/ninano/ninano/apps/web
 npm install
 npm run dev
 ```
 
-개인적으로 `nvm`을 사용하는 환경에서는 `apps/web/.nvmrc`의 버전을 사용할 수도
-있지만, 이 프로젝트를 실행하는 데 `nvm`이 필수는 아닙니다.
+터미널에 표시된 주소(기본값 `http://localhost:5173`)를 브라우저에서 엽니다.
 
-검사와 production build는 다음 명령으로 실행합니다.
+`nvm`은 필수가 아닙니다. 다음 명령으로 Node와 npm 설치 여부를 먼저 확인할 수 있습니다.
+
+```bash
+node --version
+npm --version
+```
+
+코드 검사와 production build는 다음과 같습니다.
 
 ```bash
 npm run typecheck
 npm run build
 ```
+
+## 현재 데이터 로딩 방식
+
+로컬 개발에서는 별도 백엔드가 필요하지 않습니다. `vite.config.ts`의 개발 서버 middleware가 저장소의 `public_data`를 다음 URL로 제공합니다.
+
+```text
+/public_data/f32_packed/manifest.json
+/public_data/f32_packed/sst/{file}.f32
+/public_data/f32_packed/t2m/{file}.f32
+/public_data/f32_packed/tpf/{file}.f32
+/public_data/f32_packed/msl/{file}.f32
+/public_data/f32_packed/tcwv/{file}.f32
+/public_data/f32_packed/wind/{file}.f32
+```
+
+데이터 로딩 우선순위는 다음과 같습니다.
+
+```text
+변수별 packed F32
+        │ 실패
+        ▼
+FastAPI 통합 frame
+        │ 실패
+        ▼
+브라우저 preview 데이터
+```
+
+preview는 UI 확인을 위한 가상 데이터이며 실제 cBottle 결과가 아닙니다.
+
+## Packed F32 데이터 계약
+
+### 파일명
+
+모든 변수 폴더가 같은 파일명을 사용합니다.
+
+```text
+sst_{sst_anomaly}_wind_{wind_delta}.f32
+```
+
+예시는 다음과 같습니다.
+
+```text
+sst_0.0_wind_0.f32
+sst_2.4_wind_5.f32
+sst_-2.0_wind_-5.f32
+```
+
+SST 23단계와 wind 11단계 조합으로 변수 폴더마다 총 253개 조건을 가집니다.
+
+### 격자
+
+격자 크기와 순서는 `manifest.json`을 기준으로 하므로 프런트 코드에 `LATSIZE`, `LONSIZE`를 고정하지 않습니다.
+
+| 항목 | 현재 값 |
+| --- | --- |
+| 위도 | `90.0 → -90.0`, 간격 `-0.25°`, 721개 |
+| 경도 | `0.0 → 359.75`, 간격 `0.25°`, 1,440개 |
+| dtype | little-endian `float32` |
+| 셀 개수 | 1,038,240 |
+
+### Scalar 파일
+
+`sst`, `t2m`, `tpf`, `msl`, `tcwv`는 각각 하나의 2차원 필드입니다.
+
+```text
+layout: [lat, lon]
+index = latIndex * lonSize + lonIndex
+shape:  [721, 1440]
+size:   4,152,960 bytes
+```
+
+### Wind 파일
+
+wind 파일 하나에는 `u10m`, `v10m`이 셀 단위로 교차 저장됩니다.
+
+```text
+layout: [lat, lon, component]
+shape:  [721, 1440, 2]
+
+index = (latIndex * lonSize + lonIndex) * 2
+u10m  = values[index]
+v10m  = values[index + 1]
+
+size: 8,305,920 bytes
+```
+
+프런트엔드는 wind 파일을 한 번 내려받은 뒤 `u10m`, `v10m` 두 `Float32Array`로 분리합니다. 두 성분은 독립 표시 레이어가 아니라 바람 입자의 방향과 속도 계산에 사용됩니다.
+
+### 원시값 변환
+
+F32에는 원시 모델 단위가 들어 있으므로 브라우저에서 표시 단위로 변환합니다.
+
+| 변수 | 입력 | 화면 변환 |
+| --- | --- | --- |
+| `sst` | K | `K - 273.15` → °C |
+| `t2m` | K | `K - 273.15` → °C |
+| `tpf` | kg m⁻² s⁻¹ 상당 flux | `max(0, value × 86400)` → mm/day |
+| `msl` | Pa | `Pa / 100` → hPa |
+| `tcwv` | kg/m² | 음수만 0으로 제한 |
+| `u10m`, `v10m` | m/s | 변환 없음 |
+
+`NaN`은 데이터 없음으로 취급하며 지도에서 투명하게 표시합니다.
+
+## 요청과 캐시 동작
+
+- 최초 로딩 시 `(SST 0.0, wind 0)`의 `sst`, `wind`, 기본 표시 레이어를 읽습니다.
+- 표시 레이어를 바꾸면 해당 scalar 폴더의 파일만 추가로 읽습니다.
+- 실험 슬라이더를 움직이면 해당 조건의 요청을 즉시 시작합니다.
+- 슬라이더를 연속해서 움직이면 이전 요청은 `AbortController`로 취소합니다.
+- `sst`와 wind는 ENSO 진단 및 바람 애니메이션 때문에 항상 함께 읽습니다.
+- 파싱한 필드는 최대 96 MiB 범위에서 LRU 방식으로 메모리에 캐시합니다.
+
+## 화면 렌더링
+
+표시 가능한 색상 레이어는 다음 5개입니다.
+
+| 변수 | 의미 | 표시 단위 |
+| --- | --- | --- |
+| `sst` | 해수면 온도 | °C |
+| `t2m` | 지표 2m 공기 온도 | °C |
+| `tpf` | 강수량 | mm/day |
+| `msl` | 평균 해면 기압 | hPa |
+| `tcwv` | 대기 기둥 수증기량 | kg/m² |
+
+바람 입자는 각 위치의 벡터를 다음과 같이 사용합니다.
+
+```text
+speed = sqrt(u10m² + v10m²)
+longitude += u10m × timeStep / cos(latitude)
+latitude  += v10m × timeStep
+```
+
+이 계산은 흐름을 직관적으로 보여주기 위한 화면 애니메이션이며, 물리 시간 적분 결과로 사용하지 않습니다.
+
+평면 지도는 33%에서 `360° × 180°` 전체 범위를 표시하고 모든 확대 단계에서 경도:위도 범위를 2:1로 유지합니다.
+
+## 배포 시 주의사항
+
+`npm run build`는 `apps/web/dist`에 프런트엔드만 생성합니다. 대용량 `public_data`는 dist에 복사하지 않습니다.
+
+운영 환경에서는 Nginx, CDN, Object Storage 또는 백엔드가 `f32_packed` 디렉터리를 정적 파일로 제공해야 합니다. 데이터 주소가 프런트와 다르면 빌드 전에 설정합니다.
+
+```bash
+export VITE_F32_BASE_URL=https://data.example.com/f32_packed
+npm run build
+```
+
+해당 주소 바로 아래에는 `manifest.json`, `sst/`, `t2m/`, `tpf/`, `msl/`, `tcwv/`, `wind/`가 있어야 합니다. 다른 origin을 사용하면 데이터 서버의 CORS 설정도 필요합니다.
+
+FastAPI 통합 frame을 fallback으로 사용할 경우 다음 주소를 설정합니다.
+
+```bash
+export VITE_API_BASE_URL=https://api.example.com/api/v1
+```
+
+## Python 환경
+
+Python/Earth2Studio 작업은 Windows Python이 아니라 Ubuntu/WSL 환경을 기준으로 합니다. 프로젝트는 Python 3.13을 사용합니다.
+
+```bash
+wsl -d Ubuntu-24.04
+cd /mnt/d/ninano/ninano
+uv sync
+```
+
+프런트엔드와 로컬 packed F32 확인에는 NVIDIA GPU가 필요하지 않습니다. 실제 Earth2Studio/cBottle 모델 실행에 필요한 장치는 사용하는 모델과 실행 설정에 따라 별도로 확인해야 합니다.
+
+## 자동 생성 파일
+
+- `apps/web/node_modules/`: `npm install`로 설치한 패키지
+- `apps/web/dist/`: `npm run build` 결과
+- `apps/web/tsconfig.app.tsbuildinfo`: TypeScript 증분 빌드 캐시
+- `apps/web/package-lock.json`: 재현 가능한 npm 설치를 위한 잠금 파일
+
+`node_modules`, `dist`, `tsbuildinfo`는 직접 수정하지 않습니다.

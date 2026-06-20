@@ -1,46 +1,98 @@
-export type RawVariableKey = "t2m" | "msl" | "tcwv" | "u10m" | "v10m";
-export type DisplayVariableKey = "t2m" | "msl" | "tcwv" | "wind";
-export type ScenarioKey = "la_nina" | "neutral" | "el_nino";
+export const RAW_VARIABLE_KEYS = [
+  "sst",
+  "u10m",
+  "v10m",
+  "t2m",
+  "tpf",
+  "msl",
+  "tcwv",
+] as const;
+
+export type RawVariableKey = (typeof RAW_VARIABLE_KEYS)[number];
+export type DisplayVariableKey = RawVariableKey;
+export type ViewMode = "flat" | "globe";
+export type FieldValues = Float32Array;
+
+export interface ExperimentInputs {
+  sstAnomaly: number;
+  tradeWindChange: number;
+}
 
 export interface GridDefinition {
   lat: number[];
   lon: number[];
 }
 
+export interface FlatMapView {
+  centerLon: number;
+  centerLat: number;
+  zoom: number;
+}
+
 export interface SimulationFrame {
   timestamp: string;
-  fields: Record<RawVariableKey, number[]>;
+  fields: Record<RawVariableKey, FieldValues>;
 }
 
-export interface SimulationEndpoint {
-  scenario: ScenarioKey;
-  grid: GridDefinition;
-  frames: SimulationFrame[];
+export interface AxisMetadata {
+  start: number;
+  step: number;
+  count: number;
 }
 
-export interface SimulationBundle {
-  source: "api" | "preview";
+export interface EnsoVariableMetadata {
+  key: RawVariableKey;
+  index: number;
+  unit: string;
+  label: string;
+  displayRange: [number, number];
+  colorScale: string | string[];
+  noData?: "NaN" | string | null;
+}
+
+export interface EnsoMetadata {
+  datasetVersion: string;
+  baselineDate: string;
+  encoding: {
+    dtype: "float32";
+    byteOrder: "little-endian";
+    layout: "variable_lat_lon";
+    byteLength: number;
+    values?: "raw" | "display";
+  };
+  grid: {
+    lat: AxisMetadata;
+    lon: AxisMetadata;
+  };
+  sliders: {
+    sstAnomaly: { values: number[] };
+    windDelta: { values: number[] };
+  };
+  variables: EnsoVariableMetadata[];
+}
+
+export interface SimulationDataset {
+  source: "api" | "packed" | "preview";
   sourceLabel: string;
-  endpoints: Record<ScenarioKey, SimulationEndpoint>;
-}
-
-export interface SimulationManifest {
-  version: 1;
-  endpoints: Record<ScenarioKey, string>;
+  metadata: EnsoMetadata;
+  grid: GridDefinition;
+  baselineFrame: SimulationFrame;
+  packedBaseUrl?: string;
 }
 
 export interface VariableDefinition {
   key: DisplayVariableKey;
   label: string;
   shortLabel: string;
-  sourceFields: RawVariableKey[];
   unit: string;
   description: string;
-  rawRange: readonly [number, number];
+  displayRange: readonly [number, number];
   ticks: readonly number[];
   colors: readonly string[];
   format: (value: number) => string;
 }
+
+export type VariableCatalog = Record<DisplayVariableKey, VariableDefinition>;
 
 export interface MapSample {
   lat: number;
