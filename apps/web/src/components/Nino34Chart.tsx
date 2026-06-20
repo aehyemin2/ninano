@@ -38,15 +38,15 @@ export function Nino34Chart({ grid, current, neutral }: Nino34ChartProps) {
   return (
     <section className="profile-panel panel">
       <div className="panel-heading compact">
-        <div><span className="eyebrow">Equatorial transect</span><h2>적도 SST 편차</h2></div>
+        <div><span className="eyebrow">적도 단면</span><h2>적도 해수면 온도 편차</h2></div>
         <div className="chart-legend"><span className="current" />현재 <span className="reference" />기준</div>
       </div>
-      <svg aria-label="Equatorial sea surface temperature anomaly profile" className="profile-chart" role="img" viewBox="0 0 320 112">
+      <svg aria-label="적도 해수면 온도 편차 그래프" className="profile-chart" role="img" viewBox="0 0 320 112">
         {[24, 48, 72, 96].map((y) => <line className="chart-grid" key={y} x1="8" x2="312" y1={y} y2={y} />)}
         <rect className="nino-zone" height="72" width="90" x="134" y="24" />
         <path className="reference-line" d={linePath(reference, -extent, extent)} />
         <path className="current-line" d={linePath(values, -extent, extent)} />
-        <text x="8" y="109">120°E</text><text textAnchor="middle" x="160" y="109">Niño 3.4</text><text textAnchor="end" x="312" y="109">70°W</text>
+        <text x="8" y="109">동경120°</text><text textAnchor="middle" x="160" y="109">니뇨3.4</text><text textAnchor="end" x="312" y="109">서경70°</text>
       </svg>
     </section>
   );

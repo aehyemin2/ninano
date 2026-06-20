@@ -103,6 +103,81 @@ function drawGraticule(
   context.restore();
 }
 
+// 데이터 구는 WebGL이 그리고, 장식(대기광·위경선·음영·테두리)만 2D로 얹는다.
+// 대기광은 구 바깥쪽에만 칠해(클립) 데이터 위에 색이 덧입혀지지 않게 한다.
+export function drawGlobeChrome(
+  context: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  rotation: GlobeRotation,
+  zoom: number,
+): void {
+  const { cx, cy, radius } = globeGeometry(width, height, zoom);
+  context.clearRect(0, 0, width, height);
+
+  const glow = context.createRadialGradient(cx, cy, radius * 0.72, cx, cy, radius * 1.25);
+  glow.addColorStop(0, "rgba(64, 148, 153, 0.03)");
+  glow.addColorStop(0.72, "rgba(48, 136, 146, 0.13)");
+  glow.addColorStop(1, "rgba(3, 12, 18, 0)");
+  context.save();
+  context.beginPath();
+  context.rect(0, 0, width, height);
+  context.arc(cx, cy, radius, 0, Math.PI * 2);
+  context.fillStyle = glow;
+  context.fill("evenodd");
+  context.restore();
+
+  drawGraticule(context, width, height, rotation, zoom);
+  drawGlobeEquator(context, width, height, rotation, zoom);
+
+  const shade = context.createRadialGradient(
+    cx - radius * 0.28,
+    cy - radius * 0.24,
+    radius * 0.08,
+    cx,
+    cy,
+    radius,
+  );
+  shade.addColorStop(0, "rgba(255,255,255,0.10)");
+  shade.addColorStop(0.66, "rgba(4,14,20,0.02)");
+  shade.addColorStop(1, "rgba(0,5,10,0.48)");
+  context.fillStyle = shade;
+  context.beginPath();
+  context.arc(cx, cy, radius, 0, Math.PI * 2);
+  context.fill();
+  context.strokeStyle = "rgba(219, 244, 235, 0.5)";
+  context.lineWidth = 1.25;
+  context.stroke();
+}
+
+function drawGlobeEquator(
+  context: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  rotation: GlobeRotation,
+  zoom: number,
+): void {
+  // 적도(위도 0°)를 검은 점선으로 그린다. 구 뒤로 넘어가면 끊는다.
+  context.save();
+  context.strokeStyle = "rgba(0, 0, 0, 0.5)";
+  context.lineWidth = 1;
+  context.setLineDash([7, 6]);
+  let drawing = false;
+  context.beginPath();
+  for (let lon = 0; lon <= 360; lon += 2) {
+    const projected = globeToScreen(0, lon, width, height, rotation, zoom);
+    if (!projected.visible) {
+      drawing = false;
+      continue;
+    }
+    if (!drawing) context.moveTo(projected.x, projected.y);
+    else context.lineTo(projected.x, projected.y);
+    drawing = true;
+  }
+  context.stroke();
+  context.restore();
+}
+
 export function drawGlobe(
   context: CanvasRenderingContext2D,
   width: number,
@@ -138,6 +213,7 @@ export function drawGlobe(
   }
 
   drawGraticule(context, width, height, rotation, zoom);
+  drawGlobeEquator(context, width, height, rotation, zoom);
   const shade = context.createRadialGradient(
     cx - radius * 0.28,
     cy - radius * 0.24,

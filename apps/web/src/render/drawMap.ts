@@ -44,8 +44,10 @@ export function drawMapOverlay(
 
   const equator = projectFlatCoordinate(0, view.centerLon, width, height, view);
   if (equator.visible) {
-    context.strokeStyle = "rgba(255, 255, 255, 0.12)";
-    context.setLineDash([2, 9]);
+    // 적도는 검은 점선으로 구분한다.
+    context.strokeStyle = "rgba(0, 0, 0, 0.5)";
+    context.lineWidth = 1;
+    context.setLineDash([7, 6]);
     context.beginPath();
     context.moveTo(0, equator.y);
     context.lineTo(width, equator.y);

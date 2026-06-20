@@ -2,7 +2,7 @@
 
 Earth2Studio/cBottle로 생성한 ENSO 기후 실험 결과를 평면 지도와 3D 지구에서 탐색하는 웹 프로젝트입니다.
 
-현재 프런트엔드는 React 19, TypeScript, Vite와 Canvas로 구성되어 있습니다. SST anomaly와 무역풍 변화 값을 조절하면 해당 조건의 Float32 데이터를 즉시 읽으며, 별도의 적용 버튼은 사용하지 않습니다.
+현재 프런트엔드는 React 19, TypeScript, Vite, WebGL2와 Canvas overlay로 구성되어 있습니다. SST anomaly와 무역풍 변화 슬라이더를 놓으면 선택 기후장을 먼저 표시하고 wind는 이어서 지연 로딩합니다.
 
 ## 주요 기능
 
@@ -32,19 +32,21 @@ ninano/
 │        ├─ styles.css              # 화면 및 반응형 스타일
 │        ├─ components/
 │        │  ├─ ControlPanel.tsx     # 실험 슬라이더와 레이어 선택
-│        │  ├─ PacificMapCanvas.tsx # 평면/3D Canvas와 지도 조작
+│        │  ├─ PacificMapCanvas.tsx # WebGL/Canvas 레이어와 지도 조작
 │        │  ├─ ENSOStatusPanel.tsx  # ENSO 영역 평균 지표
 │        │  ├─ Nino34Chart.tsx      # 적도 SST 편차 그래프
 │        │  └─ Icon.tsx             # 공통 SVG 아이콘
 │        ├─ data/
 │        │  ├─ ensoApi.ts           # packed F32/API/preview 로딩과 캐시
-│        │  ├─ readF32Frame.ts      # scalar 및 interleaved wind 파싱
+│        │  ├─ readF32Frame.ts      # scalar 및 planar wind 파싱
 │        │  ├─ demoSimulation.ts    # 데이터 연결 실패 시 preview
 │        │  ├─ variableCatalog.ts   # 단위, 범위, 색상표 구성
 │        │  └─ loadGeoJson.ts       # 육지 경계 좌표 로딩
 │        ├─ render/
 │        │  ├─ drawSSTLayer.ts      # 선택 기후장 렌더링과 좌표 변환
-│        │  ├─ drawWindParticles.ts # u/v 벡터 입자 애니메이션
+│        │  ├─ webglFieldRenderer.ts # 평면 scalar R32F 렌더링
+│        │  ├─ webglWindRenderer.ts  # GPU wind texture/particle 렌더링
+│        │  ├─ drawWindParticles.ts  # WebGL 미지원 시 Canvas fallback
 │        │  ├─ drawMap.ts           # 평면 경위도 격자
 │        │  ├─ drawGlobe.ts         # 3D 지구 투영
 │        │  └─ drawLandBoundaries.ts
@@ -184,20 +186,20 @@ size:   4,152,960 bytes
 
 ### Wind 파일
 
-wind 파일 하나에는 `u10m`, `v10m`이 셀 단위로 교차 저장됩니다.
+wind 파일 하나에는 `u10m` 전체 격자 뒤에 `v10m` 전체 격자가 저장됩니다.
 
 ```text
-layout: [lat, lon, component]
-shape:  [721, 1440, 2]
+layout: [component, lat, lon]
+shape:  [2, 721, 1440]
 
-index = (latIndex * lonSize + lonIndex) * 2
+index = latIndex * lonSize + lonIndex
 u10m  = values[index]
-v10m  = values[index + 1]
+v10m  = values[fieldSize + index]
 
 size: 8,305,920 bytes
 ```
 
-프런트엔드는 wind 파일을 한 번 내려받은 뒤 `u10m`, `v10m` 두 `Float32Array`로 분리합니다. 두 성분은 독립 표시 레이어가 아니라 바람 입자의 방향과 속도 계산에 사용됩니다.
+정적 fallback과 FastAPI 모두 같은 planar wind를 사용합니다. 프런트는 복사나 반복문 없이 `u10m`, `v10m` 두 `Float32Array` view를 즉시 생성합니다. 두 성분은 바람 입자의 방향과 속도 계산에 사용됩니다.
 
 ### 원시값 변환
 
@@ -216,11 +218,11 @@ F32에는 원시 모델 단위가 들어 있으므로 브라우저에서 표시 
 
 ## 요청과 캐시 동작
 
-- 최초 로딩 시 `(SST 0.0, wind 0)`의 `sst`, `wind`, 기본 표시 레이어를 읽습니다.
+- 최초 로딩 시 `(SST 0.0, wind 0)`의 `sst`와 기본 표시 레이어를 먼저 읽고 wind를 이어서 읽습니다.
 - 표시 레이어를 바꾸면 해당 scalar 폴더의 파일만 추가로 읽습니다.
 - 실험 슬라이더를 움직이면 해당 조건의 요청을 즉시 시작합니다.
 - 슬라이더를 연속해서 움직이면 이전 요청은 `AbortController`로 취소합니다.
-- `sst`와 wind는 ENSO 진단 및 바람 애니메이션 때문에 항상 함께 읽습니다.
+- 조건 변경 시 선택 scalar와 SST가 도착하면 WebGL 지도를 즉시 바꾸고, wind가 도착하면 GPU 입자를 시작합니다.
 - 파싱한 필드는 최대 96 MiB 범위에서 LRU 방식으로 메모리에 캐시합니다.
 
 ## 화면 렌더링

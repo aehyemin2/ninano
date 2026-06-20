@@ -3,20 +3,23 @@
 import json
 import math
 import os
+import sys
+from array import array
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 
 
-# 기본값은 저장소의 public_data/f32_packed이다.
-# 데이터 서버를 따로 운영할 때는 NINANO_F32_ROOT 환경변수로 바꿀 수 있다.
+# 기본값은 저장소의 public_data/f32_packed_05deg(0.5° 다운샘플)이다.
+# 원본 0.25°를 쓰려면 f32_packed로 바꾸거나 NINANO_F32_ROOT 환경변수로 지정한다.
 DATA_ROOT = Path(
     os.environ.get(
         "NINANO_F32_ROOT",
-        Path(__file__).resolve().parents[2] / "public_data" / "f32_packed",
+        Path(__file__).resolve().parents[2] / "public_data" / "f32_packed_05deg",
     )
 ).expanduser().resolve()
 
@@ -90,6 +93,23 @@ def validate_wind(value: int) -> int:
     return value
 
 
+@lru_cache(maxsize=4)
+def load_planar_wind(path_text: str, modified_ns: int) -> bytes:
+    """Interleaved wind를 [u 전체][v 전체]로 바꾸고 최근 4개를 캐시한다."""
+
+    del modified_ns  # 파일이 바뀌면 cache key도 바뀌게 하기 위한 인자다.
+    values = array("f")
+    with Path(path_text).open("rb") as source:
+        values.fromfile(source, Path(path_text).stat().st_size // values.itemsize)
+    if sys.byteorder != "little":
+        values.byteswap()
+
+    # array slicing은 Python의 요소별 for loop가 아니라 C 구현에서 수행된다.
+    u10m = values[0::2]
+    v10m = values[1::2]
+    return u10m.tobytes() + v10m.tobytes()
+
+
 @app.get("/")
 def root() -> dict:
     """브라우저에서 서버 주소를 열었을 때 API 위치를 안내한다."""
@@ -131,7 +151,8 @@ def get_layer(
     layer: str,
     sst_anomaly: float = Query(..., description="-2.0~2.4, 0.2 간격"),
     wind_delta: int = Query(..., description="-5~5 정수"),
-) -> FileResponse:
+    layout: Literal["interleaved", "planar"] = Query("planar"),
+) -> Response:
     """조건에 맞는 scalar 또는 interleaved wind F32 파일을 그대로 전송한다."""
 
     manifest = load_manifest()
@@ -170,6 +191,28 @@ def get_layer(
             },
         )
 
+    source_is_planar = manifest["wind"].get("layout", [None])[0] == "component"
+    if layer == "wind" and layout == "planar" and not source_is_planar:
+        # 브라우저는 앞 절반을 u10m, 뒤 절반을 v10m view로 즉시 사용한다.
+        payload = load_planar_wind(str(path), path.stat().st_mtime_ns)
+        return Response(
+            content=payload,
+            media_type="application/octet-stream",
+            headers={
+                "Cache-Control": "public, max-age=3600",
+                "X-Climate-Layer": layer,
+                "X-Buffer-Dtype": "float32",
+                "X-Buffer-Byte-Order": "little-endian",
+                "X-Wind-Layout": "component_lat_lon",
+            },
+        )
+
+    if layer == "wind" and layout == "interleaved" and source_is_planar:
+        raise HTTPException(
+            status_code=422,
+            detail="wind 원본이 planar이므로 interleaved 응답을 지원하지 않습니다.",
+        )
+
     # Python에서 파일 내용을 읽거나 JSON으로 바꾸지 않는다.
     # FileResponse가 파일을 binary stream으로 프런트에 전달한다.
     return FileResponse(
@@ -180,5 +223,6 @@ def get_layer(
             "X-Climate-Layer": layer,
             "X-Buffer-Dtype": "float32",
             "X-Buffer-Byte-Order": "little-endian",
+            **({"X-Wind-Layout": "component_lat_lon"} if layer == "wind" else {}),
         },
     )

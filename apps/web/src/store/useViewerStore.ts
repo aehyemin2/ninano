@@ -7,6 +7,7 @@ interface ViewerState {
   draftInputs: ExperimentInputs;
   appliedInputs: ExperimentInputs;
   showWind: boolean;
+  showAnomaly: boolean;
   viewMode: ViewMode;
   hasPendingChanges: boolean;
   setSelectedVariable: (value: DisplayVariableKey) => void;
@@ -14,6 +15,7 @@ interface ViewerState {
   setDraftTradeWindChange: (value: number) => void;
   commitAppliedInputs: (value: ExperimentInputs) => void;
   setShowWind: (value: boolean) => void;
+  setShowAnomaly: (value: boolean) => void;
   setViewMode: (value: ViewMode) => void;
 }
 
@@ -30,6 +32,7 @@ export function ViewerStoreProvider({ children }: PropsWithChildren) {
     tradeWindChange: 0,
   });
   const [showWind, setShowWind] = useState(true);
+  const [showAnomaly, setShowAnomaly] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("flat");
   const hasPendingChanges =
     draftInputs.sstAnomaly !== appliedInputs.sstAnomaly ||
@@ -41,6 +44,7 @@ export function ViewerStoreProvider({ children }: PropsWithChildren) {
       draftInputs,
       appliedInputs,
       showWind,
+      showAnomaly,
       viewMode,
       hasPendingChanges,
       setSelectedVariable,
@@ -50,6 +54,7 @@ export function ViewerStoreProvider({ children }: PropsWithChildren) {
         setDraftInputs((current) => ({ ...current, tradeWindChange: value })),
       commitAppliedInputs: (value: ExperimentInputs) => setAppliedInputs(value),
       setShowWind,
+      setShowAnomaly,
       setViewMode,
     }),
     [
@@ -57,6 +62,7 @@ export function ViewerStoreProvider({ children }: PropsWithChildren) {
       draftInputs,
       appliedInputs,
       showWind,
+      showAnomaly,
       viewMode,
       hasPendingChanges,
     ],

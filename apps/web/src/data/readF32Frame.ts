@@ -79,6 +79,21 @@ export function readWindF32(
   };
 }
 
+export function readPlanarWindF32(
+  buffer: ArrayBuffer,
+  fieldSize: number,
+): { u10m: Float32Array; v10m: Float32Array } {
+  const expectedBytes = fieldSize * 2 * FLOAT_BYTES;
+  if (buffer.byteLength !== expectedBytes) {
+    throw new Error(`planar wind f32 크기 오류: ${buffer.byteLength} != ${expectedBytes}`);
+  }
+  const packed = readLittleEndianFloat32(buffer);
+  return {
+    u10m: packed.subarray(0, fieldSize),
+    v10m: packed.subarray(fieldSize),
+  };
+}
+
 function convertRawFieldInPlace(
   values: Float32Array,
   start: number,

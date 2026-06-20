@@ -23,10 +23,10 @@ export const PREVIEW_METADATA: EnsoMetadata = {
     { key: "sst", index: 0, unit: "°C", label: "해수면 온도", displayRange: [0, 32], colorScale: "thermal", noData: "NaN" },
     { key: "u10m", index: 1, unit: "m/s", label: "동서 바람", displayRange: [-15, 15], colorScale: "wind" },
     { key: "v10m", index: 2, unit: "m/s", label: "남북 바람", displayRange: [-12, 12], colorScale: "wind" },
-    { key: "t2m", index: 3, unit: "°C", label: "2m 기온", displayRange: [-50, 35], colorScale: "temperature" },
+    { key: "t2m", index: 3, unit: "°C", label: "기온", displayRange: [-50, 35], colorScale: "temperature" },
     { key: "tpf", index: 4, unit: "mm/day", label: "강수량", displayRange: [0, 60], colorScale: "precipitation" },
-    { key: "msl", index: 5, unit: "hPa", label: "해면 기압", displayRange: [980, 1040], colorScale: "pressure" },
-    { key: "tcwv", index: 6, unit: "kg/m²", label: "대기 수증기", displayRange: [0, 60], colorScale: "moisture" },
+    { key: "msl", index: 5, unit: "hPa", label: "기압", displayRange: [980, 1040], colorScale: "pressure" },
+    { key: "tcwv", index: 6, unit: "kg/m²", label: "공기 속 수증기", displayRange: [0, 60], colorScale: "moisture" },
   ],
 };
 
