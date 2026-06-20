@@ -1,13 +1,10 @@
 import xarray as xr
 
-ds = xr.open_dataset("output.nc")
+data = xr.open_dataarray("difference.nc")
 
-print(ds)
-print(ds.data_vars)
-print(ds.coords)
+variables = data.coords["variable"].values.tolist()
 
+print("변수 개수:", len(variables))
 
-import matplotlib.pyplot as plt
-
-ds["t2m"].isel(time=0, lead_time=-1).plot()
-plt.show()
+for variable in variables:
+    print(variable)
