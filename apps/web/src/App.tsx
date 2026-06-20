@@ -9,6 +9,8 @@ import { createVariableCatalog } from "./data/variableCatalog";
 import { useViewerStore } from "./store/useViewerStore";
 import type { SimulationDataset, SimulationFrame } from "./types/simulation";
 
+const SLIDER_DEBOUNCE_MS = 180;
+
 export default function App() {
   const [dataset, setDataset] = useState<SimulationDataset | null>(null);
   const [frame, setFrame] = useState<SimulationFrame | null>(null);
@@ -16,6 +18,7 @@ export default function App() {
   const [applyError, setApplyError] = useState<string | null>(null);
   const applyController = useRef<AbortController | null>(null);
   const { appliedInputs, commitAppliedInputs, draftInputs, selectedVariable, showWind } = useViewerStore();
+  const [requestedInputs, setRequestedInputs] = useState(draftInputs);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -29,17 +32,22 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const timeout = window.setTimeout(() => setRequestedInputs(draftInputs), SLIDER_DEBOUNCE_MS);
+    return () => window.clearTimeout(timeout);
+  }, [draftInputs]);
+
+  useEffect(() => {
     if (!dataset) return undefined;
     applyController.current?.abort();
     const controller = new AbortController();
     applyController.current = controller;
     setIsApplying(true);
     setApplyError(null);
-    loadSimulationFrame(dataset, draftInputs, selectedVariable, controller.signal)
+    loadSimulationFrame(dataset, requestedInputs, selectedVariable, controller.signal)
       .then((nextFrame) => {
         if (controller.signal.aborted) return;
         setFrame(nextFrame);
-        commitAppliedInputs(draftInputs);
+        commitAppliedInputs(requestedInputs);
       })
       .catch((error: unknown) => {
         if (!(error instanceof DOMException && error.name === "AbortError")) {
@@ -53,7 +61,7 @@ export default function App() {
         }
       });
     return () => controller.abort();
-  }, [dataset, draftInputs, selectedVariable]);
+  }, [dataset, requestedInputs, selectedVariable]);
 
   const variables = useMemo(() => dataset ? createVariableCatalog(dataset.metadata) : null, [dataset]);
 

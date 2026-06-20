@@ -49,13 +49,34 @@ export function readWindF32(
     throw new Error(`wind f32 파일 크기 오류: ${buffer.byteLength} != ${expectedBytes}`);
   }
   const packed = readLittleEndianFloat32(buffer);
-  const u10m = new Float32Array(fieldSize);
-  const v10m = new Float32Array(fieldSize);
-  for (let index = 0; index < fieldSize; index += 1) {
-    u10m[index] = packed[index * 2];
-    v10m[index] = packed[index * 2 + 1];
+  const visited = new Uint8Array(Math.ceil(packed.length / 8));
+  const wasVisited = (index: number) => (visited[index >> 3] & (1 << (index & 7))) !== 0;
+  const markVisited = (index: number) => { visited[index >> 3] |= 1 << (index & 7); };
+  const destination = (index: number) => index % 2 === 0
+    ? index / 2
+    : fieldSize + (index - 1) / 2;
+
+  // Convert [u0, v0, u1, v1, ...] to [u0, u1, ..., v0, v1, ...] in the
+  // response buffer itself. The bitset costs ~0.25 MiB for the 0.25° grid,
+  // instead of allocating another full 8 MiB pair of component arrays.
+  for (let start = 0; start < packed.length; start += 1) {
+    if (wasVisited(start)) continue;
+    let current = start;
+    let carried = packed[current];
+    do {
+      markVisited(current);
+      const next = destination(current);
+      const displaced = packed[next];
+      packed[next] = carried;
+      carried = displaced;
+      current = next;
+    } while (current !== start);
   }
-  return { u10m, v10m };
+
+  return {
+    u10m: packed.subarray(0, fieldSize),
+    v10m: packed.subarray(fieldSize),
+  };
 }
 
 function convertRawFieldInPlace(

@@ -19,9 +19,15 @@ import {
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "/api/v1").replace(/\/$/, "");
 const PACKED_BASE_URL = (import.meta.env.VITE_F32_BASE_URL ?? "/public_data/f32_packed").replace(/\/$/, "");
-const MAX_CACHED_BYTES = 96 * 1024 * 1024;
-const frameCache = new Map<string, SimulationFrame>();
-const fieldCache = new Map<string, Float32Array>();
+const MAX_CACHED_BYTES = 64 * 1024 * 1024;
+
+interface CacheEntry {
+  value: unknown;
+  byteLength: number;
+}
+
+const dataCache = new Map<string, CacheEntry>();
+let cachedByteLength = 0;
 
 interface PackedManifest {
   dtype: "float32";
@@ -100,16 +106,27 @@ function metadataFromManifest(manifest: PackedManifest): EnsoMetadata {
   };
 }
 
-function touchField(key: string, values: Float32Array): void {
-  fieldCache.delete(key);
-  fieldCache.set(key, values);
-  let bytes = Array.from(fieldCache.values()).reduce((total, field) => total + field.byteLength, 0);
-  while (bytes > MAX_CACHED_BYTES && fieldCache.size > 1) {
-    const oldest = fieldCache.keys().next().value as string;
-    const removed = fieldCache.get(oldest);
-    fieldCache.delete(oldest);
-    bytes -= removed?.byteLength ?? 0;
+function getCached<T>(key: string): T | undefined {
+  const entry = dataCache.get(key);
+  if (!entry) return undefined;
+  dataCache.delete(key);
+  dataCache.set(key, entry);
+  return entry.value as T;
+}
+
+function cacheValue<T>(key: string, value: T, byteLength: number): T {
+  const previous = dataCache.get(key);
+  if (previous) cachedByteLength -= previous.byteLength;
+  dataCache.delete(key);
+  dataCache.set(key, { value, byteLength });
+  cachedByteLength += byteLength;
+  while (cachedByteLength > MAX_CACHED_BYTES && dataCache.size > 1) {
+    const oldestKey = dataCache.keys().next().value as string;
+    const oldest = dataCache.get(oldestKey);
+    dataCache.delete(oldestKey);
+    cachedByteLength -= oldest?.byteLength ?? 0;
   }
+  return value;
 }
 
 async function fetchBuffer(url: string, signal?: AbortSignal): Promise<ArrayBuffer> {
@@ -126,14 +143,10 @@ async function fetchPackedScalar(
   signal?: AbortSignal,
 ): Promise<Float32Array> {
   const cacheKey = `${baseUrl}:${key}:${fileName}`;
-  const cached = fieldCache.get(cacheKey);
-  if (cached) {
-    touchField(cacheKey, cached);
-    return cached;
-  }
+  const cached = getCached<Float32Array>(cacheKey);
+  if (cached) return cached;
   const values = readScalarF32(await fetchBuffer(`${baseUrl}/${key}/${fileName}`, signal), fieldSize, key);
-  touchField(cacheKey, values);
-  return values;
+  return cacheValue(cacheKey, values, values.byteLength);
 }
 
 async function fetchPackedWind(
@@ -142,23 +155,14 @@ async function fetchPackedWind(
   fieldSize: number,
   signal?: AbortSignal,
 ): Promise<{ u10m: Float32Array; v10m: Float32Array }> {
-  const uKey = `${baseUrl}:u10m:${fileName}`;
-  const vKey = `${baseUrl}:v10m:${fileName}`;
-  const cachedU = fieldCache.get(uKey);
-  const cachedV = fieldCache.get(vKey);
-  if (cachedU && cachedV) {
-    touchField(uKey, cachedU);
-    touchField(vKey, cachedV);
-    return { u10m: cachedU, v10m: cachedV };
-  }
+  const cacheKey = `${baseUrl}:wind:${fileName}`;
+  const cached = getCached<{ u10m: Float32Array; v10m: Float32Array }>(cacheKey);
+  if (cached) return cached;
   const wind = readWindF32(await fetchBuffer(`${baseUrl}/wind/${fileName}`, signal), fieldSize);
-  touchField(uKey, wind.u10m);
-  touchField(vKey, wind.v10m);
-  return wind;
+  return cacheValue(cacheKey, wind, wind.u10m.buffer.byteLength);
 }
 
 async function fetchPackedFrame(
-  datasetVersion: string,
   baseUrl: string,
   metadata: EnsoMetadata,
   inputs: ExperimentInputs,
@@ -166,9 +170,6 @@ async function fetchPackedFrame(
   signal?: AbortSignal,
 ): Promise<SimulationFrame> {
   const fileName = buildF32FileName(inputs);
-  const frameKey = `${datasetVersion}:${fileName}:${selectedVariable}`;
-  const cachedFrame = frameCache.get(frameKey);
-  if (cachedFrame) return cachedFrame;
   const fieldSize = metadata.grid.lat.count * metadata.grid.lon.count;
   const scalarKeys = new Set<RawVariableKey>(["sst"]);
   if (SCALAR_KEYS.has(selectedVariable)) scalarKeys.add(selectedVariable);
@@ -184,10 +185,7 @@ async function fetchPackedFrame(
   for (const [key, values] of scalarEntries) fields[key] = values;
   fields.u10m = wind.u10m;
   fields.v10m = wind.v10m;
-  const frame = { timestamp: metadata.baselineDate, fields };
-  frameCache.set(frameKey, frame);
-  if (frameCache.size > 12) frameCache.delete(frameCache.keys().next().value as string);
-  return frame;
+  return { timestamp: metadata.baselineDate, fields };
 }
 
 async function fetchPackedDataset(selectedVariable: DisplayVariableKey, signal?: AbortSignal): Promise<SimulationDataset> {
@@ -197,7 +195,6 @@ async function fetchPackedDataset(selectedVariable: DisplayVariableKey, signal?:
   const metadata = metadataFromManifest(manifest);
   const grid = { lat: axisValues(metadata.grid.lat), lon: axisValues(metadata.grid.lon) };
   const baselineFrame = await fetchPackedFrame(
-    metadata.datasetVersion,
     PACKED_BASE_URL,
     metadata,
     { sstAnomaly: 0, tradeWindChange: 0 },
@@ -215,14 +212,13 @@ async function fetchMetadata(signal?: AbortSignal): Promise<EnsoMetadata> {
 
 async function fetchApiFrame(metadata: EnsoMetadata, inputs: ExperimentInputs, signal?: AbortSignal): Promise<SimulationFrame> {
   const key = `${metadata.datasetVersion}:${inputs.sstAnomaly.toFixed(1)}:${inputs.tradeWindChange.toFixed(0)}`;
-  const cached = frameCache.get(key);
+  const cached = getCached<SimulationFrame>(key);
   if (cached) return cached;
   const query = new URLSearchParams({ dataset_version: metadata.datasetVersion, sst_anomaly: inputs.sstAnomaly.toFixed(1), wind_delta: inputs.tradeWindChange.toFixed(0) });
   const response = await fetch(`${API_BASE_URL}/enso/frame?${query}`, { signal });
   if (!response.ok) throw new Error(`frame 요청 실패 (${response.status})`);
   const frame = readF32Frame(await response.arrayBuffer(), metadata);
-  frameCache.set(key, frame);
-  return frame;
+  return cacheValue(key, frame, metadata.encoding.byteLength);
 }
 
 export async function loadSimulationDataset(
@@ -255,7 +251,7 @@ export async function loadSimulationFrame(
 ): Promise<SimulationFrame> {
   if (dataset.source === "preview") return createPreviewFrame(inputs);
   if (dataset.source === "packed" && dataset.packedBaseUrl) {
-    return fetchPackedFrame(dataset.metadata.datasetVersion, dataset.packedBaseUrl, dataset.metadata, inputs, selectedVariable, signal);
+    return fetchPackedFrame(dataset.packedBaseUrl, dataset.metadata, inputs, selectedVariable, signal);
   }
   return fetchApiFrame(dataset.metadata, inputs, signal);
 }

@@ -96,7 +96,7 @@ export function ControlPanel({
         </div>
 
         <p className={`live-apply-status ${isApplying ? "is-loading" : ""}`}>
-          <span />{isApplying ? "선택한 데이터를 불러오는 중…" : "슬라이더 변경 즉시 적용"}
+          <span />{isApplying ? "선택한 데이터를 불러오는 중…" : "슬라이더 입력 후 자동 적용"}
         </p>
         {applyError && <p className="apply-error" role="alert">{applyError}</p>}
       </section>
