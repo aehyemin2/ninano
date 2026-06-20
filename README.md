@@ -1,4 +1,6 @@
 ## 폴더 구조
+
+```text
 enso-earth-simulator/
 ├─ apps/
 │  └─ web/
@@ -43,3 +45,4 @@ enso-earth-simulator/
         ├─ simulation_index.json
         ├─ la_nina_endpoint.json
         └─ el_nino_endpoint.json
+```
